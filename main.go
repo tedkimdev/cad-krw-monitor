@@ -74,7 +74,8 @@ func pushGraphite(rate float64) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s:%s", cfg.GraphiteUser, cfg.GraphiteAPIKey))
+	authHeader := fmt.Sprintf("Bearer %s:%s", cfg.GraphiteUser, cfg.GraphiteAPIKey)
+	req.Header.Set("Authorization", authHeader)
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -304,6 +305,18 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
+
+	// Background goroutine: spike detection every 5 min while server is awake
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			if _, err := check(false); err != nil {
+				log.Printf("ERROR background check: %v", err)
+			}
+		}
+	}()
+	log.Println("background checker started (every 5 min)")
 
 	http.HandleFunc("/check", handleCheck)
 	http.HandleFunc("/health", handleHealth)
