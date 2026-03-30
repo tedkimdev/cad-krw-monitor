@@ -20,6 +20,9 @@ type Config struct {
 	TargetRate        float64
 	TargetAbove       bool
 	CheckSecret       string
+	GrafanaURL        string
+	GrafanaUser       string
+	GrafanaPassword   string
 }
 
 type State struct {
@@ -55,6 +58,42 @@ func fetchRate() (float64, error) {
 		return 0, fmt.Errorf("KRW rate not found")
 	}
 	return rate, nil
+}
+
+// pushGrafana sends the rate to Grafana Cloud via Prometheus remote write
+func pushGrafana(rate float64) error {
+	if cfg.GrafanaURL == "" {
+		return nil
+	}
+
+	// Prometheus remote write uses protobuf, but we can use the simpler
+	// Graphite/influx line protocol via the push endpoint instead.
+	// Here we use the Prometheus text exposition format via pushgateway-style endpoint.
+	nowMs := time.Now().UnixMilli()
+	body := fmt.Sprintf(`# HELP cad_krw_rate CAD to KRW exchange rate
+# TYPE cad_krw_rate gauge
+cad_krw_rate{pair="CAD_KRW"} %.4f %d
+`, rate, nowMs)
+
+	req, err := http.NewRequest(http.MethodPost, cfg.GrafanaURL, bytes.NewBufferString(body))
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth(cfg.GrafanaUser, cfg.GrafanaPassword)
+	req.Header.Set("Content-Type", "text/plain")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("grafana error %d: %s", resp.StatusCode, string(b))
+	}
+	log.Printf("grafana: pushed %.4f KRW", rate)
+	return nil
 }
 
 type DiscordEmbed struct {
@@ -161,6 +200,11 @@ func check(hourly bool) (float64, error) {
 	}
 	log.Printf("rate: 1 CAD = %.2f KRW", rate)
 
+	// Push to Grafana every check
+	if err := pushGrafana(rate); err != nil {
+		log.Printf("WARN grafana push failed: %v", err)
+	}
+
 	state.mu.Lock()
 	prevRate := state.prevRate
 	targetHit := state.targetHit
@@ -247,6 +291,9 @@ func main() {
 		DiscordWebhookURL: os.Getenv("DISCORD_WEBHOOK_URL"),
 		SpikeThreshold:    0.005,
 		CheckSecret:       os.Getenv("CHECK_SECRET"),
+		GrafanaURL:        os.Getenv("GRAFANA_URL"),
+		GrafanaUser:       os.Getenv("GRAFANA_USER"),
+		GrafanaPassword:   os.Getenv("GRAFANA_PASSWORD"),
 	}
 	if cfg.DiscordWebhookURL == "" {
 		log.Fatal("DISCORD_WEBHOOK_URL env var is required")

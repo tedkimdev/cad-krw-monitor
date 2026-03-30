@@ -1,105 +1,81 @@
 # cad-krw-monitor
 
-A lightweight Go daemon that monitors the CAD/KRW exchange rate and sends Discord alerts.
+A lightweight Go service that monitors the CAD/KRW exchange rate, sends Discord alerts, and pushes metrics to Grafana Cloud.
+
+## How it works
+
+```
+GitHub Actions (every 20 min)
+        ↓ POST /check
+Render Web Service (free)
+        ↓
+  - Fetch CAD/KRW rate
+  - Push metrics → Grafana Cloud 📊
+  - Send alerts  → Discord 🔔
+```
 
 ## Alerts
 
-- ⏰ **Hourly** — regular rate update every hour
-- 🚨 **Spike** — immediate alert when rate moves ±0.5% or more
+- ⏰ **Hourly** — regular rate update every hour (:00)
+- 🚨 **Spike** — immediate alert when rate moves ±0.5% or more (:00, :20, :40)
 - 🎯 **Target** — alert when rate hits your target price
 
-## Requirements
+## Stack
 
-- Go 1.21+
-- Discord webhook URL
-- A place to run it (Render, Fly.io, VPS, or locally)
-
-## Quickstart
-
-```bash
-git clone https://github.com/YOUR_USERNAME/cad-krw-monitor
-cd cad-krw-monitor
-go mod init cad-krw-monitor
-
-# Run with Discord alerts only
-DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..." go run main.go
-
-# Run with a target rate (alert when rate drops to 900 KRW or below)
-DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..." \
-TARGET_RATE=900 \
-TARGET_DIRECTION=below \
-go run main.go
-```
+- **Go** — HTTP server
+- **Render** — free web service hosting
+- **GitHub Actions** — cron trigger (3x per hour, free on public repos)
+- **Grafana Cloud** — metrics dashboard (free tier)
+- **Discord** — alert notifications
 
 ## Environment Variables
 
-| Variable | Required | Description | Example |
-|----------|----------|-------------|---------|
-| `DISCORD_WEBHOOK_URL` | ✅ | Discord webhook URL | `https://discord.com/api/webhooks/...` |
-| `TARGET_RATE` | ❌ | Target rate in KRW | `950` |
-| `TARGET_DIRECTION` | ❌ | `above` or `below` (default: `above`) | `below` |
-
-## Configuration
-
-Edit the `Config` struct in `main.go`:
-
-```go
-config: Config{
-    CheckInterval:  5 * time.Minute, // how often to fetch the rate
-    NotifyInterval: 1 * time.Hour,   // how often to send a regular update
-    SpikeThreshold: 0.005,           // 0.005 = 0.5%
-}
-```
-
-## Discord Webhook Setup
-
-1. Open the Discord channel you want alerts in
-2. Channel Settings → Integrations → Webhooks → New Webhook
-3. Copy the webhook URL
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DISCORD_WEBHOOK_URL` | ✅ | Discord webhook URL |
+| `CHECK_SECRET` | ✅ | Secret header for `/check` endpoint security |
+| `GRAFANA_URL` | ✅ | Grafana Cloud Prometheus remote write URL |
+| `GRAFANA_USER` | ✅ | Grafana Cloud username (numeric ID) |
+| `GRAFANA_PASSWORD` | ✅ | Grafana Cloud API token |
+| `TARGET_RATE` | ❌ | Target rate in KRW (e.g. `1065`) |
+| `TARGET_DIRECTION` | ❌ | `above` or `below` (default: `above`) |
 
 ## Deployment
 
-### Render (recommended — free tier)
+### 1. Render
 
-1. Push this repo to GitHub
-2. Create a new **Background Worker** on Render
-3. Set environment variables in Render dashboard
-4. Deploy
+- New → Blueprint → connect this repo
+- Set environment variables in Render dashboard
+- Copy the service URL (e.g. `https://cad-krw-monitor.onrender.com`)
 
-### Run in background (macOS/Linux)
+### 2. GitHub Secrets
 
-```bash
-go build -o monitor main.go
+Repo → Settings → Secrets and variables → Actions:
 
-nohup DISCORD_WEBHOOK_URL="..." ./monitor > monitor.log 2>&1 &
+- `RENDER_URL` — your Render service URL
+- `CHECK_SECRET` — same value as set in Render
 
-# View logs
-tail -f monitor.log
+### 3. Test
 
-# Stop
-kill $(pgrep monitor)
-```
+GitHub Actions → `Check Rate (Hourly :00)` → **Run workflow**
 
-### systemd (Linux)
+Check Discord for the alert and Grafana for the metric.
 
-```ini
-# /etc/systemd/system/cad-krw-monitor.service
-[Unit]
-Description=CAD/KRW Exchange Rate Monitor
+## GitHub Actions Workflows
 
-[Service]
-Environment=DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
-ExecStart=/path/to/monitor
-Restart=always
+| Workflow | Schedule | Action |
+|----------|----------|--------|
+| `check-00.yml` | Every hour at :00 | Spike check + hourly update |
+| `check-20.yml` | Every hour at :20 | Spike check |
+| `check-40.yml` | Every hour at :40 | Spike check |
 
-[Install]
-WantedBy=multi-user.target
-```
+## Grafana Dashboard
 
-```bash
-sudo systemctl enable --now cad-krw-monitor
-```
+After data starts flowing, add a panel in Grafana:
+
+- Data source: **Prometheus**
+- Metric: `cad_krw_rate`
 
 ## Data Source
 
-Uses [open.er-api.com](https://open.er-api.com) — free, no API key required.
+[open.er-api.com](https://open.er-api.com) — free, no API key required.
