@@ -1,3 +1,3 @@
-module github.com/tedkimdev/cad-krw-monitor
+module cad-krw-monitor
 
-go 1.25.5
+go 1.22

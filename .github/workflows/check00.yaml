@@ -1,0 +1,16 @@
+name: Check Rate (Hourly :00)
+
+on:
+  schedule:
+    - cron: '0 * * * *'   # every hour at :00
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /check (hourly update)
+        run: |
+          curl -s -f -X POST \
+            -H "X-Secret: ${{ secrets.CHECK_SECRET }}" \
+            "${{ secrets.RENDER_URL }}/check?hourly=true"

@@ -1,0 +1,16 @@
+name: Check Rate (:20)
+
+on:
+  schedule:
+    - cron: '20 * * * *'  # every hour at :20
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /check (spike detection)
+        run: |
+          curl -s -f -X POST \
+            -H "X-Secret: ${{ secrets.CHECK_SECRET }}" \
+            "${{ secrets.RENDER_URL }}/check"
