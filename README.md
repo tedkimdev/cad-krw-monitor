@@ -10,7 +10,7 @@ GitHub Actions (every 20 min)
 Render Web Service (free)
         ↓
   - Fetch CAD/KRW rate
-  - Push metrics → Grafana Cloud 📊
+  - Push metrics → Grafana Cloud (Graphite) 📊
   - Send alerts  → Discord 🔔
 ```
 
@@ -25,7 +25,7 @@ Render Web Service (free)
 - **Go** — HTTP server
 - **Render** — free web service hosting
 - **GitHub Actions** — cron trigger (3x per hour, free on public repos)
-- **Grafana Cloud** — metrics dashboard (free tier)
+- **Grafana Cloud** — metrics dashboard via Graphite (free tier)
 - **Discord** — alert notifications
 
 ## Environment Variables
@@ -34,9 +34,8 @@ Render Web Service (free)
 |----------|----------|-------------|
 | `DISCORD_WEBHOOK_URL` | ✅ | Discord webhook URL |
 | `CHECK_SECRET` | ✅ | Secret header for `/check` endpoint security |
-| `GRAFANA_URL` | ✅ | Grafana Cloud Prometheus remote write URL |
-| `GRAFANA_USER` | ✅ | Grafana Cloud username (numeric ID) |
-| `GRAFANA_PASSWORD` | ✅ | Grafana Cloud API token |
+| `GRAPHITE_URL` | ✅ | Grafana Cloud Graphite endpoint URL |
+| `GRAPHITE_API_KEY` | ✅ | Grafana Cloud Graphite API key |
 | `TARGET_RATE` | ❌ | Target rate in KRW (e.g. `1065`) |
 | `TARGET_DIRECTION` | ❌ | `above` or `below` (default: `above`) |
 
@@ -55,7 +54,12 @@ Repo → Settings → Secrets and variables → Actions:
 - `RENDER_URL` — your Render service URL
 - `CHECK_SECRET` — same value as set in Render
 
-### 3. Test
+### 3. Grafana Cloud
+
+- grafana.com → My Account → your stack → **Graphite** → Details
+- Copy URL and API Key → add to Render env vars
+
+### 4. Test
 
 GitHub Actions → `Check Rate (Hourly :00)` → **Run workflow**
 
@@ -71,10 +75,12 @@ Check Discord for the alert and Grafana for the metric.
 
 ## Grafana Dashboard
 
-After data starts flowing, add a panel in Grafana:
+After data starts flowing:
 
-- Data source: **Prometheus**
-- Metric: `cad_krw_rate`
+1. Grafana → **Dashboards** → **New** → **New Dashboard**
+2. **Add visualization** → Data source: **Graphite**
+3. Metric: `cad_krw.rate`
+4. Save as `CAD/KRW Monitor`
 
 ## Data Source
 

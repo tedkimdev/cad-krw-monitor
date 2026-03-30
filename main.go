@@ -20,9 +20,8 @@ type Config struct {
 	TargetRate        float64
 	TargetAbove       bool
 	CheckSecret       string
-	GrafanaURL        string
-	GrafanaUser       string
-	GrafanaPassword   string
+	GraphiteURL       string
+	GraphiteAPIKey    string
 }
 
 type State struct {
@@ -60,26 +59,21 @@ func fetchRate() (float64, error) {
 	return rate, nil
 }
 
-// pushGrafana sends the rate to Grafana Cloud via Prometheus remote write
-func pushGrafana(rate float64) error {
-	if cfg.GrafanaURL == "" {
+// pushGraphite sends rate to Grafana Cloud via Graphite plaintext protocol
+func pushGraphite(rate float64) error {
+	if cfg.GraphiteURL == "" {
 		return nil
 	}
 
-	// Prometheus remote write uses protobuf, but we can use the simpler
-	// Graphite/influx line protocol via the push endpoint instead.
-	// Here we use the Prometheus text exposition format via pushgateway-style endpoint.
-	nowMs := time.Now().UnixMilli()
-	body := fmt.Sprintf(`# HELP cad_krw_rate CAD to KRW exchange rate
-# TYPE cad_krw_rate gauge
-cad_krw_rate{pair="CAD_KRW"} %.4f %d
-`, rate, nowMs)
+	ts := time.Now().Unix()
+	// Graphite plaintext: "metric.name value timestamp\n"
+	line := fmt.Sprintf("cad_krw.rate %.4f %d\n", rate, ts)
 
-	req, err := http.NewRequest(http.MethodPost, cfg.GrafanaURL, bytes.NewBufferString(body))
+	req, err := http.NewRequest(http.MethodPost, cfg.GraphiteURL, bytes.NewBufferString(line))
 	if err != nil {
 		return err
 	}
-	req.SetBasicAuth(cfg.GrafanaUser, cfg.GrafanaPassword)
+	req.Header.Set("Authorization", "Bearer "+cfg.GraphiteAPIKey)
 	req.Header.Set("Content-Type", "text/plain")
 
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -90,9 +84,9 @@ cad_krw_rate{pair="CAD_KRW"} %.4f %d
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("grafana error %d: %s", resp.StatusCode, string(b))
+		return fmt.Errorf("graphite error %d: %s", resp.StatusCode, string(b))
 	}
-	log.Printf("grafana: pushed %.4f KRW", rate)
+	log.Printf("graphite: pushed %.4f KRW", rate)
 	return nil
 }
 
@@ -200,9 +194,9 @@ func check(hourly bool) (float64, error) {
 	}
 	log.Printf("rate: 1 CAD = %.2f KRW", rate)
 
-	// Push to Grafana every check
-	if err := pushGrafana(rate); err != nil {
-		log.Printf("WARN grafana push failed: %v", err)
+	// Push to Graphite
+	if err := pushGraphite(rate); err != nil {
+		log.Printf("WARN graphite push failed: %v", err)
 	}
 
 	state.mu.Lock()
@@ -291,9 +285,8 @@ func main() {
 		DiscordWebhookURL: os.Getenv("DISCORD_WEBHOOK_URL"),
 		SpikeThreshold:    0.005,
 		CheckSecret:       os.Getenv("CHECK_SECRET"),
-		GrafanaURL:        os.Getenv("GRAFANA_URL"),
-		GrafanaUser:       os.Getenv("GRAFANA_USER"),
-		GrafanaPassword:   os.Getenv("GRAFANA_PASSWORD"),
+		GraphiteURL:       os.Getenv("GRAPHITE_URL"),
+		GraphiteAPIKey:    os.Getenv("GRAPHITE_API_KEY"),
 	}
 	if cfg.DiscordWebhookURL == "" {
 		log.Fatal("DISCORD_WEBHOOK_URL env var is required")
