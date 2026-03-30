@@ -1,0 +1,12 @@
+services:
+  - type: worker
+    name: cad-krw-monitor
+    runtime: docker
+    plan: free
+    envVars:
+      - key: DISCORD_WEBHOOK_URL
+        sync: false
+      - key: TARGET_RATE
+        sync: false
+      - key: TARGET_DIRECTION
+        sync: false
