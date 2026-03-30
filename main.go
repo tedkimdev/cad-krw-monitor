@@ -36,7 +36,62 @@ var (
 	state = &State{}
 )
 
+// fetchRateYahoo fetches real-time CAD/KRW from Yahoo Finance (unofficial)
+func fetchRateYahoo() (float64, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequest(http.MethodGet, "https://query1.finance.yahoo.com/v8/finance/chart/CADKRW=X", nil)
+	if err != nil {
+		return 0, err
+	}
+	// Yahoo requires a User-Agent header
+	req.Header.Set("User-Agent", "Mozilla/5.0")
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("yahoo request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var result struct {
+		Chart struct {
+			Result []struct {
+				Meta struct {
+					RegularMarketPrice float64 `json:"regularMarketPrice"`
+				} `json:"meta"`
+			} `json:"result"`
+			Error *struct {
+				Description string `json:"description"`
+			} `json:"error"`
+		} `json:"chart"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return 0, fmt.Errorf("yahoo json parse error: %w", err)
+	}
+	if result.Chart.Error != nil {
+		return 0, fmt.Errorf("yahoo api error: %s", result.Chart.Error.Description)
+	}
+	if len(result.Chart.Result) == 0 {
+		return 0, fmt.Errorf("yahoo: no data")
+	}
+	rate := result.Chart.Result[0].Meta.RegularMarketPrice
+	if rate == 0 {
+		return 0, fmt.Errorf("yahoo: rate is 0")
+	}
+	return rate, nil
+}
+
+// fetchRate tries Yahoo Finance first, falls back to open.er-api.com
 func fetchRate() (float64, error) {
+	rate, err := fetchRateYahoo()
+	if err != nil {
+		log.Printf("WARN yahoo failed, falling back to open.er-api.com: %v", err)
+		return fetchRateOpenER()
+	}
+	log.Printf("source: yahoo finance")
+	return rate, nil
+}
+
+// fetchRateOpenER fetches CAD/KRW from open.er-api.com (updates hourly)
+func fetchRateOpenER() (float64, error) {
 	resp, err := http.Get("https://open.er-api.com/v6/latest/CAD")
 	if err != nil {
 		return 0, fmt.Errorf("request failed: %w", err)
@@ -57,6 +112,7 @@ func fetchRate() (float64, error) {
 	if !ok {
 		return 0, fmt.Errorf("KRW rate not found")
 	}
+	log.Printf("source: open.er-api.com")
 	return rate, nil
 }
 

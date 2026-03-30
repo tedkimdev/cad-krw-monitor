@@ -9,9 +9,10 @@ GitHub Actions (every 20 min)
         ↓ POST /check
 Render Web Service (free)
         ↓
-  - Fetch CAD/KRW rate
+  - Fetch CAD/KRW rate (Yahoo Finance → open.er-api.com fallback)
   - Push metrics → Grafana Cloud (Graphite) 📊
   - Send alerts  → Discord 🔔
+  - Background goroutine checks every 5 min while awake
 ```
 
 ## Alerts
@@ -19,6 +20,11 @@ Render Web Service (free)
 - ⏰ **Hourly** — regular rate update every hour (:00)
 - 🚨 **Spike** — immediate alert when rate moves ±0.5% or more (:00, :20, :40)
 - 🎯 **Target** — alert when rate hits your target price
+
+## Data Sources
+
+1. **Yahoo Finance** (primary) — real-time CAD/KRW rate
+2. **open.er-api.com** (fallback) — hourly updates, no API key required
 
 ## Stack
 
@@ -34,8 +40,9 @@ Render Web Service (free)
 |----------|----------|-------------|
 | `DISCORD_WEBHOOK_URL` | ✅ | Discord webhook URL |
 | `CHECK_SECRET` | ✅ | Secret header for `/check` endpoint security |
-| `GRAPHITE_URL` | ✅ | Grafana Cloud Graphite endpoint URL |
-| `GRAPHITE_API_KEY` | ✅ | Grafana Cloud Graphite API key |
+| `GRAPHITE_URL` | ✅ | Grafana Cloud Graphite ingest URL |
+| `GRAPHITE_USER` | ✅ | Grafana Cloud Graphite user ID (numeric) |
+| `GRAPHITE_API_KEY` | ✅ | Grafana Cloud access policy token |
 | `TARGET_RATE` | ❌ | Target rate in KRW (e.g. `1065`) |
 | `TARGET_DIRECTION` | ❌ | `above` or `below` (default: `above`) |
 
@@ -57,7 +64,8 @@ Repo → Settings → Secrets and variables → Actions:
 ### 3. Grafana Cloud
 
 - grafana.com → My Account → your stack → **Graphite** → Details
-- Copy URL and API Key → add to Render env vars
+- Copy ingest URL, user ID, and generate an access policy token with `metrics:write` scope
+- Add to Render env vars
 
 ### 4. Test
 
@@ -82,6 +90,14 @@ After data starts flowing:
 3. Metric: `cad_krw.rate`
 4. Save as `CAD/KRW Monitor`
 
-## Data Source
+## Background Checker
 
-[open.er-api.com](https://open.er-api.com) — free, no API key required.
+When the server is awake (after a GitHub Actions call), a background goroutine checks the rate every 5 minutes for spike detection. The server sleeps after ~15 minutes of inactivity on Render's free tier.
+
+## Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/check?hourly=true` | POST | Fetch rate, push to Grafana, send hourly Discord update |
+| `/check` | POST | Fetch rate, push to Grafana, spike/target check only |
+| `/health` | GET | Health check |
