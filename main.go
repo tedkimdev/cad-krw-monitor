@@ -60,22 +60,22 @@ func fetchRate() (float64, error) {
 	return rate, nil
 }
 
-// pushGraphite sends rate to Grafana Cloud via Graphite plaintext protocol
+// pushGraphite sends rate to Grafana Cloud via Graphite JSON API
 func pushGraphite(rate float64) error {
 	if cfg.GraphiteURL == "" {
 		return nil
 	}
 
 	ts := time.Now().Unix()
-	// Graphite plaintext: "metric.name value timestamp\n"
-	line := fmt.Sprintf("cad_krw.rate %.4f %d\n", rate, ts)
 
-	req, err := http.NewRequest(http.MethodPost, cfg.GraphiteURL, bytes.NewBufferString(line))
+	payload := fmt.Sprintf(`[{"name":"cad_krw.rate","interval":60,"value":%.4f,"time":%d}]`, rate, ts)
+
+	req, err := http.NewRequest(http.MethodPost, cfg.GraphiteURL, bytes.NewBufferString(payload))
 	if err != nil {
 		return err
 	}
-	req.SetBasicAuth(cfg.GraphiteUser, cfg.GraphiteAPIKey)
-	req.Header.Set("Content-Type", "text/plain")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s:%s", cfg.GraphiteUser, cfg.GraphiteAPIKey))
+	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
