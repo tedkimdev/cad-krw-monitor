@@ -21,6 +21,7 @@ type Config struct {
 	TargetAbove       bool
 	CheckSecret       string
 	GraphiteURL       string
+	GraphiteUser      string
 	GraphiteAPIKey    string
 }
 
@@ -73,7 +74,7 @@ func pushGraphite(rate float64) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+cfg.GraphiteAPIKey)
+	req.SetBasicAuth(cfg.GraphiteUser, cfg.GraphiteAPIKey)
 	req.Header.Set("Content-Type", "text/plain")
 
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -286,6 +287,7 @@ func main() {
 		SpikeThreshold:    0.005,
 		CheckSecret:       os.Getenv("CHECK_SECRET"),
 		GraphiteURL:       os.Getenv("GRAPHITE_URL"),
+		GraphiteUser:      os.Getenv("GRAPHITE_USER"),
 		GraphiteAPIKey:    os.Getenv("GRAPHITE_API_KEY"),
 	}
 	if cfg.DiscordWebhookURL == "" {
